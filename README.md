@@ -2,7 +2,7 @@
 ![image](https://user-images.githubusercontent.com/72376781/161991957-d3f27501-ae37-48dc-b98c-67f9fda8783d.png)
 
 ## 분석 배경 및 내용
-> 일상생활을 하다보면 유튜브, 넷플릭스, 쿠팡 등 많은 부분에서 추천 알고리즘의 도움을 받게 됩니다. 저도 평소 영화를 고를 때 추천 알고리즘의 도움을 많이 받지만 이동진 평론가의 도움도 자주 받습니다. 그러던 중 <b>이동진 평론가가 남긴 평점과 한줄평을 함께 보는 추천 시스템을 만들어 보고 싶어 개인 프로젝트를 진행하게 되었습니다.</b>
+> 일상생활을 하다보면 유튜브, 넷플릭스, 쿠팡 등 많은 부분에서 추천 알고리즘의 도움을 받게 됩니다. 저도 평소 영화를 고를 때 추천 알고리즘의 도움을 많이 받지만 이동진 평론가의 도움도 자주 받습니다. 그러던 중 <b>이동진 평론가가 남긴 평점과 한줄평을 함께 보는 영화 추천 시스템을 만들어 보고 싶어 해당 프로젝트를 진행하게 되었습니다.</b>
 
 1. ``네이버 블로그, 네이버 API와 Kaggle을 통해 데이터 수집``을 진행했습니다. 데이터는 영화 제목(한/영), 개봉년도, 장르, 네이버 평점, IMDB 평점, 해당 평점에 투표한 IMDB 유저의 수, 이동진 평론가의 평점, 감독, 주연 배우, 이동진 평론가의 한줄평으로 구성되어있습니다.
 2. ``특이값 분해와 코사인 유사도를 활용한 하이브리드 기반의 추천 알고리즘``을 채택하였습니다. 초기엔 코사인 유사도를 활용한 콘텐츠 기반의 추천 필터링만을 적용했습니다. 하지만 개인화된 추천과 다양한 추천 목록을 제공하고 싶어 하이브리드 기반의 추천 알고리즘으로 변경하게 되었습니다.
@@ -109,6 +109,8 @@ md['weighted_rating'] = md.apply(weighted_vote_average, axis=1)
 <details>
   <summary> 4. <b>콘텐츠 기반 영화 추천</b> </summary>
 
+ 이제 코사인 유사도를 통해 콘텥츠 기반 영화 추천을 해보겠습니다.
+  
 ```python
 # 코사인 유사도가 높은 영화 10선 추천
 def recom_movie(df, sorted_ind, title_name, top_n=10):
@@ -122,9 +124,12 @@ def recom_movie(df, sorted_ind, title_name, top_n=10):
     
     # 기준 영화 index는 제외
     similar_indexes = similar_indexes[similar_indexes != title_index]
-    
+     
     # top_n의 2배에 해당하는 후보군에서  rating이 높은 순으로 top_n 만큼 추출 
-    return df.iloc[similar_indexes].sort_values('weighted_rating', ascending=False)[:top_n][['title', 'publication date', 'imdb rating', 'vote_count', 'weighted_rating','critic_rating', 'review']]
+    similar_movies =  df.iloc[similar_indexes].sort_values('weighted_rating', ascending=False)[:top_n][['title', 'publication date', 'imdb rating', 'vote_count', 'weighted_rating','critic_rating', 'review']]
+    similar_movies.rename(columns = {'title' : '제목', 'publication date' : '개봉년도', 'weighted_rating' : '가중 평점', 'critic_rating' : '이동진 평점', 'review' : '이동진의 한줄평'}, inplace = True)
+    
+    return similar_movies[['제목', '개봉년도', '가중 평점', '이동진 평점', '이동진의 한줄평']]
 
 # 기생충과 유사한 영화 10개
 similar_movies = recom_movie(md, content_sim_sorted_ind, '기생충',10)
@@ -132,6 +137,95 @@ similar_movies
 ```
 ![image](https://user-images.githubusercontent.com/72376781/162022980-7336f421-d0f9-43b7-9259-f6958d762ac0.png)
 
+'기생충'의 감독인 봉준호, 주연 배우였던 송강호가 출연했던 영화들을 위주로 추천하는 것을 확인할 수 있었습니다. 꽤나 괜찮은 영화 목록들을 추천해주네요!
 </details>
 
-## 결론
+<details>
+  <summary> 5. <b>하이브리드 기반 추천</b> </summary>
+
+콘텐츠 기반 필터링을 통해서 꽤나 괜찮은 영화 목록들을 추천해주는 것을 확인할 수 있었습니다. 하지만 콘텐츠 기반 필터링에도 단점이 존재합니다. 아무래도 메타 데이터를 통해 추천하기 때문에 개인화되고 다양한 형식의 항목을 추천하기 어려운 단점이 있습니다. 이를 위해 협업 필터링을 함께 적용해 하이브리드 기반의 개인 맞춤 추천을 구현해볼 것입니다.
+
+```python
+# 특이점 분해 방식을 활용
+svd = SVD()
+cross_validate(svd, data, measures = ['RMSE', 'MAE'], cv = 5, verbose = True)
+```
+
+Evaluating RMSE, MAE of algorithm SVD on 5 split(s).
+|평가 지표 및 시간|Fold 1|Fold 2|Fold 3|Fold 4|Fold 5|Mean|Std|
+|---|---|---|---|---|---|---|---|
+|RMSE (testset)    |0.8925|  0.8963|  0.9026|  0.8994|  0.8978|  0.8977|  0.0033|  
+|MAE (testset)     |0.6881|  0.6890|  0.6928|  0.6914|  0.6932|  0.6909|  0.0020|  
+|Fit time          |3.77|    3.80|    3.78|    3.77|    3.78|    3.78|    0.01|    
+|Test time         |0.09|    0.19|    0.11|    0.20|    0.11|    0.14|    0.05|    
+
+```python
+# 해당 유저가 본 영화의 장르들을 시각화 해주는 함수
+def make_plot(user_id):
+    try:
+        plt.figure(figsize = (8,6))
+        # 해당 유저 ID 데이터만 보기
+        user = ratings.loc[ratings['userId'] == user_id]
+        user = user.merge(md, left_on = 'movieId', right_on = 'id')
+        
+        # 각 영화별 장르를 카운팅 하기 위해 split()
+        user = user['genres'].apply(lambda x : x.split())
+        
+        # 이중 for문을 통해 각 리스트에 해당하는 영화 장르 추출
+        array = []
+        for items in user:
+            for item in items:
+                array.append(item)
+
+        user_view = pd.DataFrame()
+        user_view['genres'] = array
+
+        # 시각화
+        count_df = pd.DataFrame(user_view.groupby('genres')['genres'].count().sort_values(ascending = False))
+        sns.barplot(data = count_df, x = count_df.index, y = count_df['genres'], palette = 'Paired')
+        plt.xticks(rotation = 90)
+        plt.xlabel('장르')
+        plt.ylabel('영화를 본 횟수')
+        plt.title('User ID: ' + str(user_id), size = 14)
+        plt.show()
+    except:
+        print('없는 유저입니다. 다른 유저 ID를 검색해주실래요?😥')
+```
+  
+<figure class="third">
+    <img src= "https://user-images.githubusercontent.com/72376781/162029392-5eba445e-4047-40b2-9f5f-986912f05408.png" width = "400">
+    <img src= "https://user-images.githubusercontent.com/72376781/162026834-f0fea2ae-a10a-49fc-a230-2d22a6bbc9d8.png" width = "400">
+</figure>
+
+- 236번 유저: 스릴러 영화를 가장 많이 시청했고 드라마와 액션, 범죄 등의 장르를 좋아하는 것 같습니다.
+- 73번 유저: 드라마 영화를 특히 많이 본 유저입니다. 
+  
+```python
+# 하이브리드 기반의 영화 추천
+def hybrid(userId, title):
+     try:
+        # 해당 영화 제목에 맞는 movieId 추출
+        idx = indices[title]
+        tmdbId = id_map.loc[title]['id']
+        movie_id = id_map.loc[title]['movieId']
+        
+        # 해당 영화와 높은 코사인 유사도 점수
+        sim_scores = list(enumerate(cosine_sim[int(idx)]))
+        sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
+        sim_scores = sim_scores[1:20]
+        movie_indices = [i[0] for i in sim_scores]
+
+        # 예상 평점을 기준으로 상위 10개 영화 추천
+        movies = md.iloc[movie_indices][['id', 'title', 'publication date', 'weighted_rating', 'naver rating', 'critic_rating', 'vote_count', 'review']]
+        movies['est'] = round(movies['id'].apply(lambda x: svd.predict(userId, indices_map.loc[x]['movieId']).est), 1)
+        movies['exp_rating'] = round((movies['est'] * 2 + movies['weighted_rating']) / 2 , 2)
+        movies = movies.sort_values(by = 'exp_rating', ascending=False)
+
+       # 후보군 중  exp_rating이 높은 순으로 10개의 영화 추천 
+        movies.rename(columns = {'title' : '제목', 'publication date' : '개봉년도', 'exp_rating' : '예상 평점', 'critic_rating' : '이동진 평점', 'review' : '이동진의한줄평'}, inplace = True)
+        return movies[['제목', '개봉년도', '예상 평점', '이동진 평점', '이동진의 한줄평']].head(10)
+  
+     except:
+            print('유저 ID 또는 영화 제목을 다시 한 번 확인해주실래요? 🥺')
+```
+</details>
